@@ -57,7 +57,10 @@ struct sec_jack_info {
 	struct platform_device *send_key_dev;
 	unsigned int cur_jack_type;
 };
-
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+//HDLNC_OPK_20110307
+static struct sec_jack_info *local_hi;
+#endif
 /* with some modifications like moving all the gpio structs inside
  * the platform data and getting the name for the switch and
  * gpio_event from the platform data, the driver could support more than
@@ -77,16 +80,38 @@ static struct gpio_event_direct_entry sec_jack_key_map[] = {
 	{
 		.code	= KEY_UNKNOWN,
 	},
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+};
+static struct gpio_event_direct_entry sec_jack_key_map35[] = {
+	{
+		.code	= KEY_UNKNOWN,
+	},
+#endif
 };
 
 static struct gpio_event_input_info sec_jack_key_info = {
 	.info.func = gpio_event_input_func,
 	.info.no_suspend = true,
 	.type = EV_KEY,
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)	
+	.flags = 0,
+#endif
 	.debounce_time.tv64 = SEND_KEY_CHECK_TIME_MS * NSEC_PER_MSEC,
 	.keymap = sec_jack_key_map,
 	.keymap_size = ARRAY_SIZE(sec_jack_key_map)
 };
+
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+static struct gpio_event_input_info sec_jack_key_info35 = {
+	.info.func = gpio_event_input_func,
+	.info.no_suspend = true,
+	.type = EV_KEY,
+	.flags = 1,
+	.debounce_time.tv.nsec = SEND_KEY_CHECK_TIME_MS * NSEC_PER_MSEC,
+	.keymap = sec_jack_key_map35,
+	.keymap_size = ARRAY_SIZE(sec_jack_key_map)
+};
+#endif
 
 static struct gpio_event_info *sec_jack_input_info[] = {
 	&sec_jack_key_info.info,
@@ -364,6 +389,32 @@ void sec_jack_buttons_work(struct work_struct *work)
 	pr_warn("%s: key is skipped. ADC value is %d\n", __func__, adc);
 }
 
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+// HDLNC_OPK_20110307
+static int jack_detect_change(struct work_struct *ignored)
+{
+	struct sec_jack_info *hi = local_hi;
+	struct sec_jack_platform_data *pdata = hi->pdata;
+
+	int time_left_ms = DET_CHECK_TIME_MS;
+	unsigned nPolarity = pdata->det_active_high;
+
+	while(time_left_ms > 0){
+		if(!(gpio_get_value(hi->det_irq)^nPolarity)){
+			handle_jack_not_inserted(hi);
+			return IRQ_HANDLED;
+		}
+		msleep(10);
+		time_left_ms -= 10;
+	}
+	determine_jack_type(hi);
+
+	return IRQ_HANDLED;
+}
+static DECLARE_WORK(jack_detect_work,jack_detect_change);
+// HDLNC_OPK_20110307
+#endif
+
 static int sec_jack_probe(struct platform_device *pdev)
 {
 	struct sec_jack_info *hi;
@@ -389,6 +440,9 @@ static int sec_jack_probe(struct platform_device *pdev)
 	}
 
 	sec_jack_key_map[0].gpio = pdata->send_end_gpio;
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+	sec_jack_key_map35[0].gpio = pdata->send_end_gpio_35;
+#endif	
 
 	/* If no other keys in pdata, make all keys default to KEY_MEDIA */
 	if (pdata->num_buttons_zones == 0)
@@ -465,6 +519,14 @@ static int sec_jack_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(&pdev->dev, hi);
+
+#if defined(CONFIG_S5PC110_DEMPSEY_BOARD)
+// HDLNC_OPK_20110307
+// Fix when boot on earjack plugged state does not recognize the problem
+	local_hi = hi;	
+	schedule_work(&jack_detect_work);
+// HDLNC_OPK_20110307
+#endif
 
 #if defined (CONFIG_SAMSUNG_CAPTIVATE) || defined(CONFIG_SAMSUNG_VIBRANT)
 	pdata->det_active_high = 1;
