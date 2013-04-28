@@ -1348,6 +1348,16 @@ void s3cfb_early_suspend(struct early_suspend *h)
 
 	pr_debug("s3cfb_early_suspend is called\n");
 
+#if defined (CONFIG_S5PC110_DEMPSEY_BOARD)
+#if defined(CONFIG_FB_S3C_LDI) //Ansari
+        ldi_common_disable();
+        //printk("ANSARI[%s]\n",__func__);
+        //s3c_gpio_setpin(GPIO_MLCD_RST, 1);
+        msleep(150);
+//NAGSM_Android_SEL_Kernel_Aakash_20110120
+#endif
+#endif
+
 #if defined (CONFIG_FB_S3C_LVDS)
 	lms700_powerdown();
 #endif

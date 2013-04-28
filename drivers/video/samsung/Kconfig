@@ -95,12 +95,29 @@ config FB_S3C_LTE480WV
 	---help---
 	  This enables support for Samsung LTE480WV 4.8\" WVGA LCD panel
 
+config FB_S3C_LDI
+        bool "AMOLED DISPLAY"
+	depends on S5PC110_DEMPSEY_BOARD
+	select LCD_CLASS_DEVICE
+	select SPI
+	select SPI_GPIO
+	select SPI_BITBANG
+	help
+	  This enables support for LD9040 and EA8868 AMOLED panel
+
 config FB_S3C_HT101HD1
 	bool "HT101HD1"
 	depends on MACH_SMDKV210
 	---help---
 	  This enables support for HT101HD1 WXVGA(1366*768) LCD panel
 endchoice
+
+config FB_S3C_MDNIE_TUNINGMODE_FOR_BACKLIGHT
+	depends on FB_S3C_MDNIE && S5PC110_DEMPSEY_BOARD
+	bool "mDNIe tuning mode for backlights"
+	default y
+	---help---
+		  This option enables to control mDNIe tuning for backlights.
 
 config FB_S3C_TL2796
         bool "TL2796"
