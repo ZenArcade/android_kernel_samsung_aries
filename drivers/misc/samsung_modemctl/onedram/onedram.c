@@ -35,6 +35,11 @@
 #include <linux/fs.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
+#if defined (CONFIG_CP_CHIPSET_STE)
+#include <linux/delay.h>
+#include <mach/param.h>
+#include <linux/gpio.h>
+#endif
 #include <linux/slab.h>
 #include "onedram.h"
 
@@ -94,6 +99,9 @@ struct onedram {
 	int irq;
 
 	struct completion comp;
+#if defined (CONFIG_CP_CHIPSET_STE)
+	struct completion comp_chkbit;
+#endif
 	atomic_t ref_sem;
 	unsigned long flags;
 
@@ -102,6 +110,35 @@ struct onedram {
 	struct onedram_reg_mapped *reg;
 };
 struct onedram *onedram;
+
+#if defined (CONFIG_CP_CHIPSET_STE)
+#if defined(CONFIG_KERNEL_DEBUG_SEC) 
+#include <linux/kernel_sec_common.h>
+#define ERRMSG "CP H/W watchdog Crash"
+static char cp_errmsg[65];
+static void _cp_watchdog_dump(void);
+#else
+#define _cp_watchdog_dump() do { } while(0)
+#endif
+
+#if defined(CONFIG_KERNEL_DEBUG_SEC) 
+static void _cp_watchdog_dump(void)
+{
+	t_kernel_sec_mmu_info mmu_info;
+
+	memset(cp_errmsg, 0, sizeof(cp_errmsg));
+
+	strcpy(cp_errmsg, ERRMSG);
+
+	printk("\nCP Dump Cause - %s\n", cp_errmsg);
+
+	kernel_sec_set_upload_magic_number();
+	kernel_sec_get_mmu_reg_dump(&mmu_info);
+	kernel_sec_set_upload_cause(UPLOAD_CAUSE_CP_ERROR_FATAL);
+	kernel_sec_hw_reset(false);
+}
+#endif
+#endif
 
 static DEFINE_SPINLOCK(onedram_lock);
 
@@ -125,6 +162,10 @@ static ssize_t show_debug(struct device *d,
 	p += sprintf(p, "Reference count: %d\n", atomic_read(&od->ref_sem));
 	p += sprintf(p, "Mailbox send: %lu\n", send_cnt);
 	p += sprintf(p, "Mailbox recv: %lu\n", recv_cnt);
+
+	#if defined (CONFIG_CP_CHIPSET_STE)
+	p += sprintf(p, "Onedram ap interrupt status : %d\n", gpio_get_value(GPIO_nINT_ONEDRAM_AP));
+	#endif
 
 	return p - buf;
 }
@@ -151,8 +192,41 @@ static inline int _read_sem(struct onedram *od)
 	return od->reg->sem;
 }
 
+#if 0 //defined (CONFIG_CP_CHIPSET_STE)
+static inline int _get_checkbit(struct onedram *od)
+{
+	int retry = 0;
+	unsigned long timeleft;
+
+	while(od->reg->check_BA)
+	{	
+		timeleft = wait_for_completion_timeout(&od->comp_chkbit, HZ/50);
+		
+		if (timeleft)
+			break;
+
+		if (!od->reg->check_BA)
+			break;
+
+		retry++;
+		if (retry > 50 ) { /* time out after 1 seconds */
+			dev_err(od->dev, "Get ChkBit time out\n");
+			return -ETIMEDOUT;
+		}
+		dev_dbg(od->dev, "[%s]onedram: Waiting ChkBit \n",__func__);
+	}
+	
+	return 0;
+}
+#endif
+
 static inline int _send_cmd(struct onedram *od, u32 cmd)
 {
+#if defined (CONFIG_CP_CHIPSET_STE)
+	u32 i=0;	
+	int retry = 0;
+	unsigned long timeleft;
+#endif
 	if (!od) {
 		printk(KERN_ERR "[%s]onedram: Dev is NULL, but try to access\n",__func__);
 		return -EFAULT;
@@ -162,7 +236,26 @@ static inline int _send_cmd(struct onedram *od, u32 cmd)
 		dev_err(od->dev, "Failed to send cmd, not initialized\n");
 		return -EFAULT;
 	}
+#if defined (CONFIG_CP_CHIPSET_STE)
+	while(od->reg->check_BA)
+	{	
+	//	timeleft = wait_for_completion_timeout(&od->comp_chkbit, HZ/50);
+		udelay(1000);
+		
+	//	if (timeleft)
+	//		break;
 
+		if (!od->reg->check_BA)
+			break;
+
+		retry++;
+		if (retry > 50 ) { /* time out after 1 seconds */
+			dev_err(od->dev, "Get ChkBit time out\n");
+			return -ETIMEDOUT;
+		}
+		dev_dbg(od->dev, "[%s]onedram: Waiting ChkBit \n",__func__);
+	}
+#endif
 	dev_dbg(od->dev, "send %x\n", cmd);
 	send_cnt++;
 	od->reg->mailbox_BA = cmd;
@@ -194,6 +287,29 @@ static inline int _get_auth(struct onedram *od, u32 cmd)
 	unsigned long timeleft;
 	int retry = 0;
 
+#if defined (CONFIG_CP_CHIPSET_STE)
+	_send_cmd(od, cmd);
+	while (!od->reg->sem) /* send cmd every 20m seconds */			
+	{	
+		timeleft = wait_for_completion_timeout(&od->comp, HZ/50);
+		
+	//	if (timeleft)
+	//		break;
+
+		if (_read_sem(od))
+			break;
+
+		retry++;
+		if (retry > 50 ) { /* time out after 1 seconds */
+			dev_err(od->dev, "get authority time out\n");
+			return -ETIMEDOUT;
+		}
+		
+		dev_dbg(od->dev, "[%s]onedram: Waiting Semaphore \n",__func__);
+	}
+	
+	return 0;
+#else
 	/* send cmd every 20m seconds */
 	while (1) {
 		_send_cmd(od, cmd);
@@ -257,7 +373,15 @@ static int put_auth(struct onedram *od, int release)
 		dev_err(od->dev, "Failed to put authority\n");
 		return -EFAULT;
 	}
+#if defined (CONFIG_CP_CHIPSET_STE)
 
+	atomic_dec_and_test(&od->ref_sem);
+	INIT_COMPLETION(od->comp);
+	INIT_COMPLETION(od->comp_chkbit);
+
+	return 0;
+
+#else
 	if (release)
 		set_bit(0, &od->flags);
 
@@ -269,6 +393,7 @@ static int put_auth(struct onedram *od, int release)
 	}
 
 	return 0;
+#endif
 }
 
 static int rel_sem(struct onedram *od)
@@ -287,6 +412,9 @@ static int rel_sem(struct onedram *od)
 		return -EBUSY;
 
 	INIT_COMPLETION(od->comp);
+#if defined (CONFIG_CP_CHIPSET_STE)
+	INIT_COMPLETION(od->comp_chkbit);
+#endif
 	clear_bit(0, &od->flags);
 	_write_sem(od, 0);
 	dev_dbg(od->dev, "rel_sem: %d\n", _read_sem(od));
@@ -361,12 +489,19 @@ static irqreturn_t onedram_irq_handler(int irq, void *data)
 	r = onedram_read_mailbox(&mailbox);
 	if (r)
 		return IRQ_HANDLED;
+#if defined (CONFIG_CP_CHIPSET_STE)
+	if (old_mailbox == mailbox &&
+			old_clock + 100000 > cpu_clock(smp_processor_id()))
+		return IRQ_HANDLED;
 
+//	dev_dbg(od->dev, "[%d] recv %x\n", _read_sem(od), mailbox);
+#else
 //	if (old_mailbox == mailbox &&
 //			old_clock + 100000 > cpu_clock(smp_processor_id()))
 //		return IRQ_HANDLED;
 
 	dev_dbg(od->dev, "[%d] recv %x\n", _read_sem(od), mailbox);
+#endif
 	hw_tmp = _read_sem(od); /* for hardware */
 
 	if (h_list.len) {
@@ -390,11 +525,20 @@ static irqreturn_t onedram_irq_handler(int irq, void *data)
 	if (_read_sem(od))
 		complete_all(&od->comp);
 
+#if defined (CONFIG_CP_CHIPSET_STE)
+	if (!od->reg->check_BA)
+		complete_all(&od->comp_chkbit);
+#endif
 	wake_up_interruptible(&od->waitq);
 	kill_fasync(&od->async_queue, SIGIO, POLL_IN);
 
+#if defined (CONFIG_CP_CHIPSET_STE)
+	old_clock = cpu_clock(smp_processor_id());
+	old_mailbox = mailbox;
+#else
 //	old_clock = cpu_clock(smp_processor_id());
 //	old_mailbox = mailbox;
+#endif
 
 	return IRQ_HANDLED;
 }
@@ -486,6 +630,12 @@ static ssize_t onedram_read(struct file *filp, char __user *buf,
 		schedule();
 	}
 
+	#if defined (CONFIG_CP_CHIPSET_STE)
+	#if defined(CONFIG_KERNEL_DEBUG_SEC) 
+	if(data == 0xabcd00c9)
+		_cp_watchdog_dump();
+	#endif
+	#endif
 	retval = put_user(data, (u32 __user *)buf);
 	if (!retval)
 		retval = sizeof(u32);
@@ -565,6 +715,10 @@ static int onedram_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
+#if defined (CONFIG_CP_CHIPSET_STE)
+unsigned int KeyValueWhenPowerUp = 0x0;
+extern u8 FSA9480_Get_JIG_UART_On_Status(void);
+#endif
 static long onedram_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct cdev *cdev = filp->f_dentry->d_inode->i_cdev;
@@ -583,6 +737,63 @@ static long onedram_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	case ONEDRAM_REL_SEM:
 		r = rel_sem(od);
 		break;
+#if defined (CONFIG_CP_CHIPSET_STE)
+	case ONEDRAM_GET_ITP:
+	{
+	#if 0
+
+		/* 1) ITP mode by key press. */
+		if ( sec_get_param_value )
+		{
+			sec_get_param_value(__PARAM_INT_13, &KeyValueWhenPowerUp);						
+		}
+		printk("[ITP Mode] 1) Key pressing or 2) JIG \n");
+		printk("KeyValueWhenPowerUp = [0x%x], func=[0x%x]\n", KeyValueWhenPowerUp, sec_get_param_value);
+#if (defined CONFIG_S5PC110_HAWK_BOARD) || (defined CONFIG_S5PC110_SIDEKICK_BOARD)
+	if ( KeyValueWhenPowerUp == 0x16d) /* Device powered up by volume down + Home key + Power key*/
+#elif defined (CONFIG_S5PC110_VIBRANTPLUS_BOARD)
+	if ( KeyValueWhenPowerUp == 0x164) /* Device powered up by volume down + Power key*/
+#else
+	if ( KeyValueWhenPowerUp == 0x4) /* Device powered up by volume down + Power key*/
+#endif
+		{
+			r = 0x00000001;
+			memcpy(onedram_resource.start+36, &r, 4);			
+			printk("Get into M5720 ITP Branch boot. (By key press) \n");
+		}
+		else
+		{
+			r = 0x00000000;
+			memcpy(onedram_resource.start+36, &r, 4);			
+			printk("Get into M5720 Normal modem boot. (By key press) \n");
+		}
+
+		/* 2) ITP mode by JIG */
+		/*
+		if ( FSA9480_Get_JIG_UART_On_Status() )
+		{
+			r = 0x00000001;
+			memcpy(onedram_resource.start+36, &r, 4);	
+			printk("Get into M5720 ITP Branch boot. (By JIG) \n");
+		}
+		else
+		{
+			r = 0x00000000;
+			memcpy(onedram_resource.start+36, &r, 4);		
+			printk("Get into M5720 Normal modem boot. (By JIG) \n");
+		}
+		*/
+
+#else
+		r = 0x00000000;
+		memcpy(onedram_resource.start+36, &r, 4);			
+		printk("Get into M5720 Normal modem boot. (By key press) \n");
+
+#endif 	
+		break;
+	}
+	#endif
+
 	default:
 		r = -ENOIOCTLCMD;
 		break;
@@ -794,6 +1005,9 @@ static void _unregister_all_handlers(void)
 static void _init_data(struct onedram *od)
 {
 	init_completion(&od->comp);
+#if defined (CONFIG_CP_CHIPSET_STE)
+	init_completion(&od->comp_chkbit);
+#endif
 	atomic_set(&od->ref_sem, 0);
 	INIT_LIST_HEAD(&h_list.list);
 	spin_lock_init(&h_list.lock);
