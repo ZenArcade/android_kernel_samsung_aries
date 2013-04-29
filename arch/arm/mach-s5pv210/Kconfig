@@ -98,6 +98,12 @@ endmenu
 
 menu "S5PC110 Machines"
 
+config S5PC110_DEV_ONENAND
+	bool
+	default y if S5PC110_DEMPSEY_BOARD
+	help 
+	  Compile in platform device definition for OneNAND1 controller
+
 config MACH_AQUILA
 	bool "Aquila"
 	select CPU_S5PV210
@@ -397,6 +403,12 @@ config SAMSUNG_P1N
 	 Select Samsung Galaxy Tab GT-P1000N
 endchoice
 endif
+
+config GPS_CHIPSET_STE_CG2900
+        bool "add GPS GNS2900"
+        default n
+        help
+         add  GPS config
 
 config S5PV210_SETUP_FB
 	bool

@@ -61,6 +61,7 @@ obj-$(CONFIG_PHONE_P1) 		+= level.o
 obj-y				+= dev-audio.o
 obj-y				+= dev-fiqdbg.o
 obj-$(CONFIG_S3C64XX_DEV_SPI)	+= dev-spi.o
+obj-$(CONFIG_S5PC110_DEV_ONENAND) += dev-onenand.o
 
 
 obj-$(CONFIG_S5P_ADC) += adc.o
