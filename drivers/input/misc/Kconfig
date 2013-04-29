@@ -579,4 +579,26 @@ config INPUT_L3G4200D
 	  This option enables gyro sensors using L3G4200D driver
 	  It is optimized for s5pc11x
 
+config OPTICAL_CAPELLA_TRITON
+	depends on  I2C && S5PC110_DEMPSEY_BOARD
+	tristate "CAPELLA triton driver for s5pc110"
+	default n
+	help
+	  CAPELLA
+	  
+config SENSORS_AK8975
+	tristate "AK8975 compass support"
+	default n
+	depends on I2C && S5PC110_DEMPSEY_BOARD
+	help
+	  If you say yes here you get support for Asahi Kasei's 
+	  orientation sensor AK8975.
+
+config SENSORS_K3DH
+	tristate "K3DH acceleration sensor support"
+	depends on I2C && S5PC110_DEMPSEY_BOARD
+        default n
+	help
+	  Driver for STMicroelectronic K3DH accelerometer.
+
 endif
