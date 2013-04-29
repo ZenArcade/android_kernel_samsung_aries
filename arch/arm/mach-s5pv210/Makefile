@@ -15,7 +15,6 @@ obj-				:=
 obj-$(CONFIG_CPU_S5PV210)	+= cpu.o init.o clock.o dma.o
 obj-$(CONFIG_CPU_S5PV210)	+= setup-i2c0.o
 obj-$(CONFIG_S5PV210_PM)	+= pm.o sleep.o
-obj-$(CONFIG_CPU_FREQ)		+= cpufreq.o
 
 obj-$(CONFIG_S5PV210_POWER_DOMAIN)	+= power-domain.o
 obj-$(CONFIG_S5PV210_CORESIGHT) += coresight.o
@@ -36,7 +35,11 @@ obj-$(CONFIG_MACH_HERRING)	+= herring-touchkey-led.o
 
 obj-$(CONFIG_MACH_HERRING)	+= dev-herring-phone.o
 
+ifeq ($(CONFIG_S5PC110_DEMPSEY_BOARD), y)
+obj-$(CONFIG_MACH_ARIES)	+= infuse-aries.o dempsey-rfkill.o
+else
 obj-$(CONFIG_MACH_ARIES)	+= mach-aries.o aries-rfkill.o
+endif
 obj-$(CONFIG_MACH_ARIES)	+= aries-vibrator.o
 obj-$(CONFIG_MACH_ARIES)	+= aries-btlpm.o
 obj-$(CONFIG_MACH_ARIES)	+= aries-watchdog.o
@@ -75,6 +78,15 @@ obj-$(CONFIG_S5PV210_SETUP_FIMC1)	+= setup-fimc1.o
 obj-$(CONFIG_S5PV210_SETUP_FIMC2)	+= setup-fimc2.o
 
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
-obj-$(CONFIG_CPU_FREQ)		+= dev-cpufreq.o
+ifeq ($(CONFIG_S5PC110_DEMPSEY_BOARD), y)
+ifeq ($(CONFIG_CPU_FREQ),y)
+obj-$(CONFIG_CPU_S5PV210)		+= cpu-freq_c110b.o
+obj-$(CONFIG_CPU_S5PV210_B)		+= cpu-freq_c110b.o
+endif
+else
+obj-$(CONFIG_CPU_FREQ)		+= cpu-freq.o
+endif
 
 obj-$(CONFIG_SEC_HEADSET)	+= sec_jack.o
+
+obj-$(CONFIG_GPS_CHIPSET_STE_CG2900)	+= cg2900_devices.o

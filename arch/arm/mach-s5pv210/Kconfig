@@ -271,6 +271,15 @@ config MACH_P1
 	help
 	  Machine support for P1
 
+config S5PC110_DEMPSEY_BOARD
+	bool "S5PC110_DEMPSEY"
+#        select S3C_DEV_HSMMC
+#        select S3C_DEV_HSMMC1 if !S5PV210_SD_CH0_8BIT
+#        select S3C_DEV_HSMMC2
+        select S3C_DEV_HSMMC3
+	help
+		select NA USA Board
+
 if MACH_ARIES
 choice
 	prompt "Select phone Type"
