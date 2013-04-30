@@ -22,6 +22,10 @@ endif
 
 obj-$(CONFIG_VIDEO_V4L2_COMMON) += v4l2-common.o
 
+ifeq ($(CONFIG_VIDEO_V4L1_COMPAT),y)
+  obj-$(CONFIG_VIDEO_DEV) += v4l1-compat.o
+endif
+
 # All i2c modules must come first:
 
 obj-$(CONFIG_VIDEO_TUNER) += tuner.o
@@ -67,6 +71,8 @@ obj-$(CONFIG_VIDEO_TCM825X) += tcm825x.o
 obj-$(CONFIG_VIDEO_TVEEPROM) += tveeprom.o
 obj-$(CONFIG_VIDEO_MT9V011) += mt9v011.o
 obj-$(CONFIG_VIDEO_MT9V032) += mt9v032.o
+obj-$(CONFIG_VIDEO_M5MO) += m5mo.o
+obj-$(CONFIG_VIDEO_SR130PC10)	+= sr130pc10.o
 obj-$(CONFIG_VIDEO_SR030PC30)	+= sr030pc30.o
 obj-$(CONFIG_VIDEO_NOON010PC30)	+= noon010pc30.o
 obj-$(CONFIG_VIDEO_M5MOLS)	+= m5mols/
